@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FX Replay Pro - Backtesting Platform</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- TradingView Lightweight Charts Library -->
+  <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    body { background-color: #0d1117; color: #c9d1d9; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    #chart { width: 100%; height: calc(100vh - 64px); }
+  </style>
+</head>
+<body class="flex flex-col h-screen overflow-hidden">
+
+  <!-- Top Navigation & Replay Controls -->
+  <header class="h-16 bg-gray-900 border-b border-gray-800 flex items-center justify-between px-6 z-10">
+    <!-- Brand Logo -->
+    <div class="flex items-center space-x-3">
+      <div class="bg-blue-600 text-white p-2 rounded-lg font-bold text-lg tracking-wider">FX</div>
+      <span class="font-bold text-lg text-white">REPLAY <span class="text-blue-500">PRO</span></span>
+    </div>
+
+    <!-- Replay Player Bar -->
+    <div class="flex items-center space-x-3 bg-gray-800 border border-gray-700 px-4 py-1.5 rounded-xl shadow-inner">
+      <button id="playBtn" onclick="togglePlay()" class="bg-blue-600 hover:bg-blue-500 text-white font-semibold px-4 py-1.5 rounded-lg flex items-center space-x-2 transition">
+        <i data-lucide="play" class="w-4 h-4" id="playIcon"></i>
+        <span id="playText">Play</span>
+      </button>
+      
+      <button onclick="stepNext()" class="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg flex items-center transition" title="Next Candle">
+        <i data-lucide="skip-forward" class="w-4 h-4"></i>
+      </button>
+
+      <div class="h-6 w-px bg-gray-700 mx-1"></div>
+
+      <label class="text-xs text-gray-400 font-medium">Speed:</label>
+      <select id="speedSelect" onchange="changeSpeed()" class="bg-gray-900 border border-gray-700 text-white text-xs rounded-md px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500">
+        <option value="1000">1x (1s)</option>
+        <option value="500">2x (0.5s)</option>
+        <option value="200" selected>5x (0.2s)</option>
+        <option value="50">20x (Fast)</option>
+      </select>
+    </div>
+
+    <!-- Account Summary Stats -->
+    <div class="flex items-center space-x-6 text-sm">
+      <div>
+        <span class="text-gray-400 block text-xs">Balance</span>
+        <span id="balanceText" class="font-bold text-emerald-400 text-base">$10,000.00</span>
+      </div>
+      <div>
+        <span class="text-gray-400 block text-xs">Open P&L</span>
+        <span id="pnlText" class="font-bold text-gray-300 text-base">$0.00</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Workspace Layout -->
+  <div class="flex flex-1 overflow-hidden relative">
+
+    <!-- Left Toolbar -->
+    <aside class="w-14 bg-gray-900 border-r border-gray-800 flex flex-col items-center py-4 space-y-4">
+      <button class="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition" title="Cursor">
+        <i data-lucide="mouse-pointer" class="w-5 h-5"></i>
+      </button>
+      <button class="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition" title="Trend Line">
+        <i data-lucide="slash" class="w-5 h-5"></i>
+      </button>
+      <button class="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition" title="FVG / Rectangle Tool">
+        <i data-lucide="square" class="w-5 h-5"></i>
+      </button>
+      <button class="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition" title="Long/Short Risk Tool">
+        <i data-lucide="bar-chart-2" class="w-5 h-5"></i>
+      </button>
+    </aside>
+
+    <!-- TradingView Chart Container -->
+    <main class="flex-1 relative bg-black" id="chart-container">
+      <div id="chart"></div>
+    </main>
+
+    <!-- Execution Panel (Right Sidebar) -->
+    <aside class="w-80 bg-gray-900 border-l border-gray-800 p-5 flex flex-col justify-between">
+      <div class="space-y-5">
+        <div class="border-b border-gray-800 pb-3 flex justify-between items-center">
+          <h3 class="font-bold text-white text-base">Execution Panel</h3>
+          <span class="text-xs bg-blue-900 text-blue-300 px-2 py-0.5 rounded-full font-semibold">XAUUSD / GOLD</span>
+        </div>
+
+        <!-- Position Type Selector -->
+        <div class="grid grid-cols-2 gap-2 bg-gray-800 p-1 rounded-xl">
+          <button id="buyTabBtn" onclick="setOrderType('BUY')" class="py-2 text-xs font-bold rounded-lg bg-emerald-600 text-white transition">BUY (LONG)</button>
+          <button id="sellTabBtn" onclick="setOrderType('SELL')" class="py-2 text-xs font-bold rounded-lg text-gray-400 hover:text-white transition">SELL (SHORT)</button>
+        </div>
+
+        <!-- Risk & Lot Size Settings -->
+        <div class="space-y-3">
+          <div>
+            <label class="text-xs text-gray-400 block mb-1">Risk Amount ($)</label>
+            <input type="number" id="riskInput" value="100" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500" />
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="text-xs text-gray-400 block mb-1">Stop Loss (Pips)</label>
+              <input type="number" id="slInput" value="20" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500" />
+            </div>
+            <div>
+              <label class="text-xs text-gray-400 block mb-1">Take Profit (Pips)</label>
+              <input type="number" id="tpInput" value="40" class="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Execute Order Button -->
+        <button id="executeBtn" onclick="executeTrade()" class="w-full py-3 bg-emerald-600 hover:bg-emerald-500 font-bold text-white rounded-xl shadow-lg transition">
+          EXECUTE BUY ORDER
+        </button>
+      </div>
+
+      <!-- Trade History Mini Log -->
+      <div class="border-t border-gray-800 pt-4">
+        <h4 class="text-xs font-semibold text-gray-400 mb-2">Trade Log</h4>
+        <div id="tradeLog" class="text-xs space-y-1.5 max-h-36 overflow-y-auto pr-1">
+          <p class="text-gray-500 italic">No trades executed yet.</p>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- JavaScript Engine Logic -->
+  <script>
+    // Initialize Icons
+    lucide.createIcons();
+
+    // App State Variables
+    let chart, candlestickSeries;
+    let fullDataset = [];
+    let currentIndex = 0;
+    let isPlaying = false;
+    let playInterval = null;
+    let currentSpeed = 200;
+    let currentOrderType = 'BUY';
+    let balance = 10000;
+    let activeTrade = null;
+
+    // Generate Dummy Historical Data for Demonstration
+    function generateDummyData() {
+      const data = [];
+      let time = new Date('2026-01-01').getTime() / 1000;
+      let open = 2000.0;
+
+      for (let i = 0; i < 300; i++) {
+        let change = (Math.random() - 0.48) * 4;
+        let high = Math.max(open, open + change) + Math.random() * 2;
+        let low = Math.min(open, open + change) - Math.random() * 2;
+        let close = open + change;
+
+        data.push({
+          time: time + i * 3600, // hourly candles
+          open: parseFloat(open.toFixed(2)),
+          high: parseFloat(high.toFixed(2)),
+          low: parseFloat(low.toFixed(2)),
+          close: parseFloat(close.toFixed(2))
+        });
+        open = close;
+      }
+      return data;
+    }
+
+    // Initialize Chart
+    function initChart() {
+      const container = document.getElementById('chart');
+      chart = LightweightCharts.createChart(container, {
+        layout: { backgroundColor: '#0d1117', textColor: '#8b949e' },
+        grid: { vertLines: { color: '#161b22' }, horzLines: { color: '#161b22' } },
+        crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+        priceScale: { borderColor: '#30363d' },
+        timeScale: { borderColor: '#30363d', timeVisible: true }
+      });
+
+      candlestickSeries = chart.addCandlestickSeries({
+        upColor: '#26a69a', downColor: '#ef5350',
+        borderVisible: false, wickUpColor: '#26a69a', wickDownColor: '#ef5350'
+      });
+
+      fullDataset = generateDummyData();
+      currentIndex = 50; // Start with initial 50 candles visible
+      candlestickSeries.setData(fullDataset.slice(0, currentIndex));
+
+      window.addEventListener('resize', () => {
+        chart.applyOptions({ width: container.clientWidth, height: container.clientHeight });
+      });
+    }
+
+    // Controls Logic
+    function togglePlay() {
+      isPlaying = !isPlaying;
+      const playText = document.getElementById('playText');
+      const playBtn = document.getElementById('playBtn');
+
+      if (isPlaying) {
+        playText.innerText = 'Pause';
+        playBtn.classList.replace('bg-blue-600', 'bg-amber-600');
+        playBtn.classList.replace('hover:bg-blue-500', 'hover:bg-amber-500');
+        playInterval = setInterval(stepNext, currentSpeed);
+      } else {
+        playText.innerText = 'Play';
+        playBtn.classList.replace('bg-amber-600', 'bg-blue-600');
+        playBtn.classList.replace('hover:bg-amber-500', 'hover:bg-blue-500');
+        clearInterval(playInterval);
+      }
+    }
+
+    function stepNext() {
+      if (currentIndex < fullDataset.length) {
+        const nextCandle = fullDataset[currentIndex];
+        candlestickSeries.update(nextCandle);
+        currentIndex++;
+        checkActiveTrade(nextCandle);
+      } else {
+        if (isPlaying) togglePlay();
+      }
+    }
+
+    function changeSpeed() {
+      currentSpeed = parseInt(document.getElementById('speedSelect').value);
+      if (isPlaying) {
+        clearInterval(playInterval);
+        playInterval = setInterval(stepNext, currentSpeed);
+      }
+    }
+
+    function setOrderType(type) {
+      currentOrderType = type;
+      const buyBtn = document.getElementById('buyTabBtn');
+      const sellBtn = document.getElementById('sellTabBtn');
+      const executeBtn = document.getElementById('executeBtn');
+
+      if (type === 'BUY') {
+        buyBtn.className = "py-2 text-xs font-bold rounded-lg bg-emerald-600 text-white transition";
+        sellBtn.className = "py-2 text-xs font-bold rounded-lg text-gray-400 hover:text-white transition";
+        executeBtn.className = "w-full py-3 bg-emerald-600 hover:bg-emerald-500 font-bold text-white rounded-xl shadow-lg transition";
+        executeBtn.innerText = "EXECUTE BUY ORDER";
+      } else {
+        sellBtn.className = "py-2 text-xs font-bold rounded-lg bg-red-600 text-white transition";
+        buyBtn.className = "py-2 text-xs font-bold rounded-lg text-gray-400 hover:text-white transition";
+        executeBtn.className = "w-full py-3 bg-red-600 hover:bg-red-500 font-bold text-white rounded-xl shadow-lg transition";
+        executeBtn.innerText = "EXECUTE SELL ORDER";
+      }
+    }
+
+    function executeTrade() {
+      if (activeTrade) {
+        alert("Standard Trade Hadaa Furan! (Close existing order first)");
+        return;
+      }
+
+      const currentCandle = fullDataset[currentIndex - 1];
+      const risk = parseFloat(document.getElementById('riskInput').value);
+      const slPips = parseFloat(document.getElementById('slInput').value);
+      const tpPips = parseFloat(document.getElementById('tpInput').value);
+
+      const entryPrice = currentCandle.close;
+      let slPrice = currentOrderType === 'BUY' ? entryPrice - (slPips * 0.1) : entryPrice + (slPips * 0.1);
+      let tpPrice = currentOrderType === 'BUY' ? entryPrice + (tpPips * 0.1) : entryPrice - (tpPips * 0.1);
+
+      activeTrade = {
+        type: currentOrderType,
+        entry: entryPrice,
+        sl: slPrice,
+        tp: tpPrice,
+        risk: risk
+      };
+
+      logMessage(`ORDER: ${currentOrderType} @ ${entryPrice.toFixed(2)} | SL: ${slPrice.toFixed(2)} | TP: ${tpPrice.toFixed(2)}`, 'text-blue-400');
+    }
+
+    function checkActiveTrade(candle) {
+      if (!activeTrade) return;
+
+      if (activeTrade.type === 'BUY') {
+        if (candle.low <= activeTrade.sl) {
+          balance -= activeTrade.risk;
+          logMessage(`STOP LOSS HIT: -$${activeTrade.risk}`, 'text-red-400');
+          activeTrade = null;
+        } else if (candle.high >= activeTrade.tp) {
+          balance += activeTrade.risk * 2;
+          logMessage(`TAKE PROFIT HIT: +$${activeTrade.risk * 2}`, 'text-emerald-400');
+          activeTrade = null;
+        }
+      } else if (activeTrade.type === 'SELL') {
+        if (candle.high >= activeTrade.sl) {
+          balance -= activeTrade.risk;
+          logMessage(`STOP LOSS HIT: -$${activeTrade.risk}`, 'text-red-400');
+          activeTrade = null;
+        } else if (candle.low <= activeTrade.tp) {
+          balance += activeTrade.risk * 2;
+          logMessage(`TAKE PROFIT HIT: +$${activeTrade.risk * 2}`, 'text-emerald-400');
+          activeTrade = null;
+        }
+      }
+      document.getElementById('balanceText').innerText = `$${balance.toLocaleString('en-US', {minimumFractionDigits: 2})}`;
+    }
+
+    function logMessage(msg, colorClass) {
+      const log = document.getElementById('tradeLog');
+      const p = document.createElement('p');
+      p.className = `${colorClass} font-mono`;
+      p.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
+      log.prepend(p);
+    }
+
+    // Start App
+    window.onload = initChart;
+  </script>
+</body>
+</html>
